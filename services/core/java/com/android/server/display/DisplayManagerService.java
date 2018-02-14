@@ -867,7 +867,7 @@ public final class DisplayManagerService extends SystemService {
         }
         return changed;
     }
-
+    private boolean isDefaultDisplay = false;
     private void performTraversalInTransactionLocked() {
         // Clear all viewports before configuring displays so that we can keep
         // track of which ones we have configured.
@@ -877,6 +877,18 @@ public final class DisplayManagerService extends SystemService {
         final int count = mDisplayDevices.size();
         for (int i = 0; i < count; i++) {
             DisplayDevice device = mDisplayDevices.get(i);
+            if (i == 0) {
+                isDefaultDisplay = true;
+            } else {
+                isDefaultDisplay = false;
+                String rotation = SystemProperties.get("persist.orientation.vhinit");
+                int default_value = (device.getDisplayDeviceInfoLocked().width < device.getDisplayDeviceInfoLocked().height)?1:0;
+                if(default_value == 1) {//竖屏
+                   device.getDisplayDeviceInfoLocked().rotation = ("0".equals(rotation))?1:0;
+                } else if(default_value == 0) {//横屏
+                   device.getDisplayDeviceInfoLocked().rotation = ("1".equals(rotation))?1:0;
+                }
+            }
             configureDisplayInTransactionLocked(device);
             device.performTraversalInTransactionLocked();
         }
@@ -967,7 +979,8 @@ public final class DisplayManagerService extends SystemService {
                     + device.getDisplayDeviceInfoLocked());
             return;
         }
-        display.configureDisplayInTransactionLocked(device, info.state == Display.STATE_OFF);
+        display.isDefaultDisplay  = isDefaultDisplay;
+        display.configureDisplayInTransactionLocked(device, info.state == Display.STATE_OFF, mLogicalDisplays.get(Display.DEFAULT_DISPLAY).mInfo);
 
         // Update the viewports if needed.
         if (!mDefaultViewport.valid

@@ -20,7 +20,6 @@
 
 package android.os;
 
-
 /**
  * @hide
  */
@@ -68,7 +67,17 @@ interface IRkDisplayDeviceManagementService
     /**
      * Set color mode format-depth
      */
-    void setColorMode(int display, String iface, String format, int depth);
+    void setColorMode(int display, String iface, String format);
+
+    /**
+     * Returns a list of supported corlor modes
+     */
+    String[] getSupportCorlorList(int display, String iface);
+
+    /**
+     * Returns current color mode
+     */
+    String getCurColorMode(int display, String iface);
 
     /**
      * Set hdr mode
@@ -125,4 +134,16 @@ interface IRkDisplayDeviceManagementService
       *Set Hue
     */
     void setHue(int display, int degree);
+    /**
+     *get Bcsh
+    */
+    int[] getBcsh(int display);
+    /**
+     *get Bcsh
+    */
+    int[] getOverscan(int display);
+    /**
+     *setGamma
+    */
+    int setGamma(int dpy,int size,in int[] red, in int[] green,in int[] blue);
 }

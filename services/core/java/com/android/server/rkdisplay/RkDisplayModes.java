@@ -13,19 +13,26 @@ import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import android.os.SystemProperties;
+import java.io.FileReader;
+import java.io.FileNotFoundException;
 
 public class RkDisplayModes {
     private static final String TAG = "RkDisplayModes";
     private static native RkDisplayModes.RkPhysicalDisplayInfo[] nativeGetDisplayConfigs(
     int dpy);
+	private static native RkDisplayModes.RkColorCapacityInfo nativeGetCorlorModeConfigs(int dpy);
     private static native void nativeInit();
     private static native void nativeUpdateConnectors();
     private static native void nativeSaveConfig();
     private static native int nativeGetNumConnectors();
     private static native void nativeSetMode(int dpy, int iface_type, String mode);
     private static native String nativeGetCurMode(int dpy, int iface_type);
+    private static native String nativeGetCurCorlorMode(int dpy);
     private static native int nativeGetBuiltIn(int dpy);
     private static native int nativeGetConnectionState(int dpy);
+    private static native int[] nativeGetBcsh(int dpy);
+    private static native int[] nativeGetOverscan(int dpy);
+    private static native int nativeSetGamma(int dpy, int size, int[] r, int[] g, int[] b);
 
     private static RkDisplayModes.RkPhysicalDisplayInfo mDisplayInfos[];
     private static RkDisplayModes.RkPhysicalDisplayInfo mMainDisplayInfos[];
@@ -33,6 +40,8 @@ public class RkDisplayModes {
     private static List<String> mWhiteList;
     private static List<ResolutionParser.RkResolutionInfo> resolutions=null;
     private static ResolutionParser mParser=null;
+    private static RkDisplayModes.RkColorCapacityInfo mMainColorInfos;
+    private static RkDisplayModes.RkColorCapacityInfo mAuxColorInfos;
 
     public final int DRM_MODE_CONNECTOR_Unknown = 0;
     public final int DRM_MODE_CONNECTOR_VGA = 1;
@@ -82,14 +91,76 @@ public class RkDisplayModes {
     private static final String MODE_TYPE_USERDEF = "userdef";
     private static final String MODE_TYPE_DRIVER = "driver";
 
-    private static final  String RESOLUTION_XML_PATH = "/system/usr/share/resolution_white.xml";
+    public static int DRM_HDMI_OUTPUT_DEFAULT_RGB = 1<<0; /* default RGB */
+    public static int DRM_HDMI_OUTPUT_YCBCR444 = 1<<1; /* YCBCR 444 */
+    public static int DRM_HDMI_OUTPUT_YCBCR422 = 1<<2; /* YCBCR 422 */
+    public static int DRM_HDMI_OUTPUT_YCBCR420 = 1<<3; /* YCBCR 420 */
 
+    public static int DEPTH_CAPA_BIT0_8BIT = 1<<0;
+    public static int DEPTH_CAPA_BIT1_10BIT = 1<<1;
+    public static int DEPTH_CAPA_BIT4_420_10BIT = 1<<4;
+
+    public static int ROCKCHIP_DEPTH_DEFAULT = 0;
+    public static int ROCKCHIP_HDMI_DEPTH_8 = 8;
+    public static int ROCKCHIP_HDMI_DEPTH_10 = 10;
+
+    private  static String STR_YCBCR444 = "YCBCR444";
+    private  static String STR_YCBCR422 = "YCBCR422";
+    private  static String STR_YCBCR420 = "YCBCR420";
+    private  static String STR_RGB = "RGB";
+    private  static String STR_DEPTH_8BIT = "8bit";
+    private  static String STR_DEPTH_10BIT = "10bit";
+
+    private static final  String RESOLUTION_XML_PATH = "/system/usr/share/resolution_white.xml";
+    private final  String HDMI_DBG_STATUS = "/d/dw-hdmi/status";
 
     public RkDisplayModes(){
         mWhiteList = new ArrayList<>();
         //resolutions = new ArrayList<ResolutionParser.RkResolutionInfo>();
         mParser = new ResolutionParser();
         readModeWhiteList(RESOLUTION_XML_PATH);
+    }
+
+    private String readColorFormatFromNode(){
+        FileReader fr=null;
+        BufferedReader br=null;
+        String line="";
+
+        try {
+            fr = new FileReader(HDMI_DBG_STATUS);
+        } catch (FileNotFoundException e) {
+            Log.e(TAG, "Couldn't find or open  file "+HDMI_DBG_STATUS, e);
+            return null;
+        }
+        br=new BufferedReader(fr);
+        try {
+            while ((line=br.readLine())!=null) {
+                if (line.contains("Color Format:")) {
+                    StringBuilder builder = new StringBuilder();
+                    int start = line.indexOf("Format:");
+                    int end = line.indexOf(" ", start+8);
+                    int depthStart = line.indexOf("Depth:");
+                    String format = line.substring(start+7, end);
+                    String depth = line.substring(depthStart+7, depthStart+8);
+                    if (format.contains("YUV444"))
+                        builder.append(STR_YCBCR444).append("-").append(depth).append("bit");
+                    else if (format.contains("YUV422"))
+                       builder.append(STR_YCBCR422).append("-").append(depth).append("bit");
+                    else if (format.contains("YUV420"))
+                       builder.append(STR_YCBCR420).append("-").append(depth).append("bit");
+                    else
+                       builder.append(format).append("-").append(depth).append("bit");
+                    Log.e(TAG, "readColorFormatFromNode :" + builder.toString());
+                    return builder.toString();
+                }
+            }
+            br.close();
+            fr.close();
+            return null;
+        } catch (IOException e) {
+            Log.e(TAG, "Couldn't read  data from /d/dw-hdmi/status", e);
+            return null;
+        }
     }
 
     private  static boolean readModeWhiteList(String pathname) {
@@ -111,7 +182,7 @@ public class RkDisplayModes {
         return true;
     }
 
-     private boolean IsResolutionNeedFilter(int dpy) {
+    private boolean IsResolutionNeedFilter(int dpy) {
         int type = nativeGetBuiltIn(dpy);
         return type==DRM_MODE_CONNECTOR_Unknown || type==DRM_MODE_CONNECTOR_Composite ||
                type==DRM_MODE_CONNECTOR_SVIDEO || type==DRM_MODE_CONNECTOR_LVDS ||
@@ -138,7 +209,7 @@ public class RkDisplayModes {
                 builder.append(info.width).append("x").append(info.height);
                 if (info.interlaceFlag == true) {
                     builder.append("i");
-                    builder.append(String.format("%.2f", info.refreshRate*2));
+                    builder.append(String.format("%.2f", info.refreshRate));
                 } else {
                     builder.append("p");
                     builder.append(String.format("%.2f", info.refreshRate));
@@ -233,6 +304,92 @@ public class RkDisplayModes {
         }
     }
 
+
+    public static final class RkColorCapacityInfo {
+        public int color_capa;
+        public int depth_capa;
+
+        public RkColorCapacityInfo() {
+        }
+
+        public RkColorCapacityInfo(RkColorCapacityInfo other) {
+            copyFrom(other);
+        }
+
+        public List<String> getCorlorModeList(){
+            boolean is420Support=false;
+            List<String> mCorlorFormatList = new ArrayList<>();
+            List<String> depthList = new ArrayList<>();
+            List<String> colorList = new ArrayList<>();
+
+            if (depth_capa != 0) {
+                if ((depth_capa&DEPTH_CAPA_BIT0_8BIT) >0)
+                    depthList.add(STR_DEPTH_8BIT);
+                if ((depth_capa & DEPTH_CAPA_BIT1_10BIT)>0)
+                    depthList.add(STR_DEPTH_10BIT);
+                if ((depth_capa & DEPTH_CAPA_BIT4_420_10BIT)>0)
+                    is420Support=true;
+            } else {
+                depthList.add(STR_DEPTH_8BIT);
+            }
+            if (color_capa != 0) {
+                if ((color_capa & DRM_HDMI_OUTPUT_DEFAULT_RGB)>0)
+                    colorList.add(STR_RGB);
+                if ((color_capa & DRM_HDMI_OUTPUT_YCBCR444)>0)
+                    colorList.add(STR_YCBCR444);
+                if ((color_capa & DRM_HDMI_OUTPUT_YCBCR422)>0)
+                    colorList.add(STR_YCBCR422);
+                if ((color_capa & DRM_HDMI_OUTPUT_YCBCR420)>0)
+                    colorList.add(STR_YCBCR420);
+            } else {
+                colorList.add(STR_RGB);
+            }
+
+            mCorlorFormatList.add("Auto");
+            for (String color : colorList) {
+                for (String depth : depthList){
+                    if (color.equals(STR_YCBCR420) && depth.equals(STR_DEPTH_10BIT))
+                        if (is420Support==false)
+                            continue;
+                    StringBuilder builder = new StringBuilder();
+                    builder.append(color);
+                    builder.append("-");
+                    builder.append(depth);
+                    mCorlorFormatList.add(builder.toString());
+                    Log.e(TAG, "getCorlorModeList :  " + builder.toString());
+                }
+            }
+            return mCorlorFormatList;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof RkColorCapacityInfo && equals((RkColorCapacityInfo)o);
+        }
+
+        public boolean equals(RkColorCapacityInfo other) {
+            return other != null
+                && color_capa == other.color_capa
+                && depth_capa == other.depth_capa;
+        }
+
+        @Override
+        public int hashCode() {
+            return 0; // don't care
+        }
+
+        public void copyFrom(RkColorCapacityInfo other) {
+            color_capa = other.color_capa;
+            depth_capa = other.depth_capa;
+        }
+
+        // For debugging purposes
+        @Override
+        public String toString() {
+            return "RkColorCapacityInfo{" + color_capa + " x " + depth_capa + "}";
+        }
+    }
+
     public static RkDisplayModes.RkPhysicalDisplayInfo[] getDisplayConfigs(int dpy) {
         if (dpy < 0) {
             throw new IllegalArgumentException("dpy is ilegal");
@@ -248,7 +405,7 @@ public class RkDisplayModes {
         nativeInit();
     }
 
-    public static void updateDisplayInfos() {
+    public  void updateDisplayInfos() {
         nativeUpdateConnectors();
     }
 
@@ -290,10 +447,7 @@ public class RkDisplayModes {
             builder.append("p");
 */
         builder.append("@");
-        if (info.interlaceFlag == true)
-            builder.append(String.format("%.2f", info.refreshRate*2));
-        else
-           builder.append(String.format("%.2f", info.refreshRate)); 
+        builder.append(String.format("%.2f", info.refreshRate)); 
         builder.append("-");
         builder.append(info.hsync_start);
         builder.append("-");
@@ -311,19 +465,25 @@ public class RkDisplayModes {
     public String getCurMode(int display, String iface){
         int ifaceType = ifacetotype(iface);
         String mCurMode = null;
+        String mAutoMode = null;
+        boolean isAutoMode=false;
         int foundIdx=-1;
         StringBuilder builder = new StringBuilder();
 
+        mCurMode = nativeGetCurMode(display, ifaceType);
+        Log.e(TAG, "nativeGetCurMode:  " + mCurMode);
         RkDisplayModes.RkPhysicalDisplayInfo mCurDisplayInfos[];
         if (display == MAIN_DISPLAY) {
             mCurDisplayInfos = getDisplayConfigs(display);
-            mCurMode = SystemProperties.get("persist.sys.resolution.main", "Auto");
+            mAutoMode = SystemProperties.get("persist.sys.resolution.main", "NULL");
         } else {
             mCurDisplayInfos = getDisplayConfigs(display);
-            mCurMode = SystemProperties.get("persist.sys.resolution.aux", "Auto");
+            mAutoMode = SystemProperties.get("persist.sys.resolution.aux", "NULL");
         }
 
-        if (mCurDisplayInfos != null && mCurMode != null && !mCurMode.contains("Auto")) {
+        if (mAutoMode.equals("Auto"))
+            isAutoMode = true;
+        if (mCurDisplayInfos != null && mCurMode != null && (!isAutoMode && !mCurMode.contains("Auto"))) {
             String[] mode_str = mCurMode.split("-");
             String[] resos = mode_str[0].split("x");
             String[] h_vfresh = resos[1].split("@");
@@ -341,10 +501,7 @@ public class RkDisplayModes {
                 String vfresh;
                 boolean isSameVfresh = false;
 
-                if (info.interlaceFlag)
-                    vfresh = String.format("%.2f", info.refreshRate*2);
-                else
-                    vfresh = String.format("%.2f", info.refreshRate);
+                vfresh = String.format("%.2f", info.refreshRate);
                 if (h_vfresh.length == 2)
                     isSameVfresh = vfresh.equals(h_vfresh[1]);
 
@@ -362,7 +519,7 @@ public class RkDisplayModes {
                     builder.append(info.width).append("x").append(info.height);
                     if (info.interlaceFlag == true) {
                         builder.append("i");
-                        builder.append(String.format("%.2f", info.refreshRate*2));
+                        builder.append(String.format("%.2f", info.refreshRate));
                     } else {
                         builder.append("p");
                         builder.append(String.format("%.2f", info.refreshRate));
@@ -470,5 +627,63 @@ public class RkDisplayModes {
         return iface;
     }
 
-}
+    public  List<String> getSupportCorlorList(int dpy){
+        List<String> colorList = new ArrayList<>();
+        Log.e(TAG, "getSupportCorlorList =========== dpy " + dpy);
+        if (dpy == 0) {
+            mMainColorInfos = nativeGetCorlorModeConfigs(dpy);
+            if (mMainColorInfos != null)
+                return mMainColorInfos.getCorlorModeList();
+        } else {
+            mAuxColorInfos = nativeGetCorlorModeConfigs(dpy);
+            if (mAuxColorInfos != null)
+                return mAuxColorInfos.getCorlorModeList();
+        }
 
+        return null;
+    }
+
+    public String getCurColorMode(int dpy) {
+        String mCurColorMode = null;
+        int foundIdx=-1;
+        RkDisplayModes.RkColorCapacityInfo mCurColorInfos;
+
+        mCurColorMode = nativeGetCurCorlorMode(dpy);
+        if (dpy == MAIN_DISPLAY) {
+            mCurColorInfos = mMainColorInfos;
+        } else {
+            mCurColorInfos = mAuxColorInfos;
+        }
+        if (mCurColorInfos != null && mCurColorMode != null && !mCurColorMode.contains("Auto")) {
+            List<String> corlorList = mCurColorInfos.getCorlorModeList();
+            for (int i = 0; i < corlorList.size(); i++) {
+                if (corlorList.get(i).equals(mCurColorMode))
+                    return mCurColorMode;
+            }
+        } else if (mCurColorMode != null && mCurColorMode.contains("Auto")){
+            return mCurColorMode;
+        }
+
+        String mColorMode = readColorFormatFromNode();
+        if (mColorMode != null)
+            mCurColorMode = mColorMode;
+        if (mCurColorMode == null)
+           mCurColorMode = "RGB-8bit";
+
+        return mCurColorMode;
+    }
+
+    public int[] getBcsh(int dpy)
+    {
+        return nativeGetBcsh(dpy);
+    }
+
+    public int[] getOverscan(int dpy)
+    {
+        return nativeGetOverscan(dpy);
+    }
+
+    public int setGamma(int dpy, int size, int[] red, int[] green, int[] blue) {
+        return nativeSetGamma(dpy, size, red, green, blue);
+    }
+}

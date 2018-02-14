@@ -76,13 +76,6 @@ public class RkDisplayOutputManager {
     public final String COLOR_FORMAT_RGB = "RGB";
    
     public final String DISPLAY_TYPE_HDMI = "HDMI";
-
-    public final String COLOR_FORMAT_YCBCR444 = "YCBCR444";
-    public final String COLOR_FORMAT_YCBCR422 = "YCBCR422";
-    public final String COLOR_FORMAT_YCBCR420 = "YCBCR420";
-    public final int COLOR_DEPTH_8BIT = 8;
-    public final int COLOR_DEPTH_10BIT = 10;
-
     public final int DISPLAY_OVERSCAN_X = 0;
     public final int DISPLAY_OVERSCAN_Y = 1;
     public final int DISPLAY_OVERSCAN_LEFT = 2;
@@ -337,13 +330,40 @@ public class RkDisplayOutputManager {
         }
     }
 
-    public void setColorMode(int display, int type, String format, int depth) {
+    public String getCurrentColorMode(int display, int type) {
         String iface = typetoface(type);
         try {
-            mService.setColorMode(display, iface, format, depth);
+            return mService.getCurColorMode(display, iface);
+        } catch (Exception e) {
+            Log.e(TAG, "Error get current color mode :" + e);
+            return null;
+        }
+    }
+
+    public void setColorMode(int display, int type, String format) {
+        String iface = typetoface(type);
+        try {
+            mService.setColorMode(display, iface, format);
         }catch (Exception e) {
             Log.e(TAG, "Error set mode :" + e);
             return;
+        }
+    }
+
+    /**
+    *
+    * @param display
+    * @param type
+    * @return
+    * @hide
+    */
+    public String[] getSupportCorlorList(int display, int type) {
+        String iface = typetoface(type);
+        try {
+            return mService.getSupportCorlorList(display, iface);
+        } catch (Exception e) {
+            Log.e(TAG, "Error get list mode :" + e);
+            return null;
         }
     }
 
@@ -398,25 +418,15 @@ public class RkDisplayOutputManager {
     * @hide
     */
     public Rect getOverScan(int display) {
-        String OverScan;
-        if(display == MAIN_DISPLAY)
-            OverScan = SystemProperties.get("persist.sys.overscan.main");
-        else if(display == AUX_DISPLAY)
-            OverScan = SystemProperties.get("persist.sys.overscan.aux");
-        else {
-            return new Rect(100,100,100,100);
+        int[] overscan = new int[4];
+        try {
+            overscan = mService.getOverscan(display);
+            Log.d(TAG, "getOverscan :" + overscan[0] +","+ overscan[1] +","+ overscan[2] + ","+overscan[3]);
+        }catch (RemoteException e) {
+            Log.e(TAG, "Error getOverScan :" + e);
         }
-
-        String split = OverScan.substring(9);
-        String [] value = split.split("\\,");
-        if (value != null) {
-            Rect rect = new Rect();
-            rect.left = Integer.parseInt(value[0]);
-            rect.top = Integer.parseInt(value[1]);
-            rect.right = Integer.parseInt(value[2]);
-            rect.bottom = Integer.parseInt(value[3]);
-            return rect;
-        }
+        if (overscan[0] != 0 && overscan[1]!=0 && overscan[2] != 0 && overscan[3] != 0)
+            return new Rect(overscan[0], overscan[1], overscan[2], overscan[3]);
         return new Rect(100,100,100,100);
     }
 
@@ -646,4 +656,80 @@ public class RkDisplayOutputManager {
         return 0;
     }
 
+    /**
+    *
+    * @param display
+    * @return brightness
+    * @hide
+    */
+    public int getBrightness(int display){
+        int[] bcsh = new int[4];
+        bcsh = getBcsh(display);
+        return bcsh[0];
+    }
+
+    /**
+    *
+    * @param display
+    * @return display
+    * @hide
+    */
+    public int getContrast(int display){
+        int[] bcsh = new int[4];
+        bcsh = getBcsh(display);
+        return bcsh[1];
+    }
+
+    /**
+    *
+    * @param display
+    * @return saturation
+    * @hide
+    */
+    public int getSaturation(int display){
+        int[] bcsh = new int[4];
+        bcsh = getBcsh(display);
+        return bcsh[2];
+    }
+
+    /**
+    *
+    * @param display
+    * @return Hue
+    * @hide
+    */
+    public int getHue(int display){
+        int[] bcsh = new int[4];
+        bcsh = getBcsh(display);
+        return bcsh[3];
+    }
+
+    /**
+    *
+    * @param display
+    * @return order:brightness, con, sat, hue
+    * @hide
+    */
+    public int[] getBcsh(int display)
+    {
+        try {
+            return mService.getBcsh(display);
+        } catch (Exception e) {
+            Log.e(TAG, "Error get brightness :" + e);
+            int[] bcsh = new int[4];
+			bcsh[0]=bcsh[1]=bcsh[2]=bcsh[3]=50;
+            return bcsh;
+        }
+    }
+
+    public int setGamma(int display, int size, int[] red, int[] green, int[] blue){
+        int ret;
+        try {
+            ret = mService.setGamma(display, size, red, green, blue);
+        } catch (Exception e) {
+            Log.e(TAG, "Error set setGamma :" + e);
+            return -1;
+        }
+        return ret;
+    }
 }

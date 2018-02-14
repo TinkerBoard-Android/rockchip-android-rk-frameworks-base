@@ -145,6 +145,11 @@ import com.android.server.Watchdog;
 import com.android.server.input.InputManagerService;
 import com.android.server.policy.PhoneWindowManager;
 import com.android.server.power.ShutdownThread;
+import com.android.server.am.ActivityStack;
+import com.android.server.am.ActivityStackSupervisor;
+import com.android.server.am.TaskRecord;
+import com.android.server.am.ActivityRecord;
+import com.android.server.am.ActivityStack.ActivityState;
 
 import java.io.BufferedWriter;
 import java.io.DataInputStream;
@@ -259,6 +264,8 @@ import static com.android.server.wm.WindowStateAnimator.STACK_CLIP_NONE;
 public class WindowManagerService extends IWindowManager.Stub
         implements Watchdog.Monitor, WindowManagerPolicy.WindowManagerFuncs {
     private static final String TAG = TAG_WITH_CLASS_NAME ? "WindowManagerService" : TAG_WM;
+
+    private static final String TAG_DUALSCREEN = "DualScreen";
 
     static final int LAYOUT_REPEAT_THRESHOLD = 4;
 
@@ -392,6 +399,25 @@ public class WindowManagerService extends IWindowManager.Stub
      * Users that are profiles of the current user. These are also allowed to show windows
      * on the current user.
      */
+
+
+	public AppWindowToken mHomeApp = null;
+	/**Current second display task id*/
+	public int mSecondDisplayTaskId = -1;
+	/**Second display activity top Name*/
+	public String mSecondTopPackageName = "";
+	/**flag indicat is move window to second*/
+	public boolean misMovingToSecond = false;
+
+    private long currentTimeout = 0;	
+
+    private boolean isRemoveSecondTask;
+    	
+	private List<Integer> mSecondTaskIds = new ArrayList<Integer>();
+
+
+
+
     int[] mCurrentProfileIds = new int[] {};
 
     final Context mContext;
@@ -680,6 +706,8 @@ public class WindowManagerService extends IWindowManager.Stub
     // hits zero so we can apply deferred orientation updates.
     int mSeamlessRotationCount = 0;
 
+	private ActivityStackSupervisor mStackSupervisor;
+	private WindowList mTempWindowList = new WindowList();
     private final class SettingsObserver extends ContentObserver {
         private final Uri mDisplayInversionEnabledUri =
                 Settings.Secure.getUriFor(Settings.Secure.ACCESSIBILITY_DISPLAY_INVERSION_ENABLED);
@@ -1092,6 +1120,456 @@ public class WindowManagerService extends IWindowManager.Stub
 
         showEmulatorDisplayOverlayIfNeeded();
     }
+
+	/**双屏显示设置*/
+	public void setOnlyShowInExtendDisplay(Session session,IWindow client,int transit){
+		if(DEBUG) Log.i(TAG_DUALSCREEN, "setOnlyShowInExtendDisplay");
+		long origId = Binder.clearCallingIdentity();
+		synchronized(mWindowMap){
+			if(mDisplayContents == null || mDisplayContents.size() <= 1){
+			    return;
+		    }
+		    final int displayCount = mDisplayContents.size();
+	    	DisplayContent defaultContent = getDefaultDisplayContentLocked();
+		    int displayId = 0;
+		    DisplayContent secondDisplayContent = null;
+	    	for(int i = 0; i < displayCount;i++){
+		    	final DisplayContent content = mDisplayContents.valueAt(i);
+		    	if(content != defaultContent){
+			    	secondDisplayContent = content;
+			    	displayId = secondDisplayContent.getDisplayId();
+			    	break;
+		    	}
+	    	}
+		    if(secondDisplayContent == null){
+		    	return;
+	    	}
+		    if(!okToDisplay()){
+			    return;
+    		}
+	    	WindowState current = windowForClientLocked(session, client, false); 
+	    	if(isHomeWindow(current)){
+		    	return;
+	    	}
+	    	AppWindowToken wtoken = current.mAppToken;
+	     	if(wtoken == null){
+		    	return;
+	    	}
+
+		    int groupId = wtoken.mTask.mTaskId;
+		    mH.sendMessage(mH.obtainMessage(H.DO_TASK_DISPLAY_CHANGED, groupId, -1));
+	    }
+		Binder.restoreCallingIdentity(origId);
+    }
+
+    public void InitDualScreen() {
+        if(DEBUG) Log.i(TAG_DUALSCREEN,"InitDualScreenUsed");
+        if(mSecondDisplayTaskId == -1) {
+		    Settings.System.getInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_ICON_USED, 0);
+		    Settings.System.putInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_ICON_USED, 0);
+        }
+    }
+
+    public void updateDisplayShowSynchronization() {
+        if(DEBUG) Log.i(TAG_DUALSCREEN,"updateDisplayShowSynchronization");
+		if(!isShowDualScreen())
+			return;
+		long origId = Binder.clearCallingIdentity();
+        int currentFocusedTaskId=mSecondDisplayTaskId;
+		Settings.System.putInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_ICON_USED, 0);
+		List<Integer> allTaskIds = null;
+		try{
+			allTaskIds = mActivityManager.getAllTaskIds();
+		}catch (Exception e){
+			if(DEBUG) Log.i(TAG_DUALSCREEN, "WindowManagerService->getAllTaskIds->e:" + e);
+		}
+		
+		if(allTaskIds == null || allTaskIds.size() < 2) {
+			return;
+        }
+		
+		synchronized(mWindowMap){
+			final int displayCount = mDisplayContents.size();
+			if(displayCount < 2) {
+				return;
+            }
+			DisplayContent defaultContent = getDefaultDisplayContentLocked();
+			DisplayContent secondDisplayContent = null;
+			WindowList defaultWindows = defaultContent.getWindowList();
+			if(DEBUG) Log.i(TAG_DUALSCREEN, "updateDisplayShowSynchronization->defaultWindows:" + defaultWindows);
+			WindowState win = null;
+			for(int i = 0; i != displayCount; ++i){
+				DisplayContent content = mDisplayContents.valueAt(i);
+				if(content != defaultContent) {
+					secondDisplayContent = content;
+                }
+			}
+			if(secondDisplayContent == null) {
+				return;
+            }
+			WindowList secondWindows = secondDisplayContent.getWindowList();
+			if(DEBUG) Log.i(TAG_DUALSCREEN, "updateDisplayShowSynchronization->secondWindows:" + secondWindows);
+		    try {
+			    SurfaceControl.openTransaction();
+			    //The primary display windows
+			    WindowList primaryWindows = new WindowList();
+			    int secondWindowsSize=secondWindows.size();
+
+			    for(int t = 0;t < secondWindows.size(); ){
+				    win = secondWindows.get(t);
+				    if(win == null){
+				    	if(DEBUG) Log.i(TAG_DUALSCREEN, "win == null");
+					    continue;
+				    }
+				    if(win.mAppToken == null){
+					    if(DEBUG) Log.i(TAG_DUALSCREEN, "win.mAppToken == null");
+           			    continue;
+				    }
+				    secondWindows.remove(win);
+				    primaryWindows.add(win);
+				    win.mDisplayContent = defaultContent;
+				
+				    if(win.mWinAnimator != null){
+                        int layerStack = defaultContent.getDisplay().getLayerStack();
+						if(win.mWinAnimator.mSurfaceController!= null){
+							win.mWinAnimator.mSurfaceController.mSurfaceControl.setLayerStack(layerStack);
+						}
+				    }
+				    defaultWindows.add(win);
+			    }
+			
+			    if(DEBUG) Log.i(TAG_DUALSCREEN, "primaryWindows:"+primaryWindows); 
+			    defaultWindows.addAll(primaryWindows);
+			    secondWindows.clear();
+				for (int i = 0; i < displayCount; i++) {
+					final DisplayContent content = mDisplayContents.valueAt(i);
+					mLayersController.assignLayersLocked(content.getWindowList());
+					content.layoutNeeded = true;
+				}
+	            mSecondDisplayTaskId = -1;
+				updateFocusedWindowLocked(UPDATE_FOCUS_WILL_PLACE_SURFACES, false);
+                SystemProperties.set("sys.dual_screen.sync","sync");
+                switchFocusWindow(mFocusedApp.mTask.mTaskId);
+				mAppTransition.setReady();
+                mWindowPlacerLocked.performSurfacePlacement();
+		    } finally {
+			    SurfaceControl.closeTransaction();
+		    }
+        }
+        Settings.System.putInt(mContext.getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT,(int)currentTimeout);
+        Binder.restoreCallingIdentity(origId);
+    }
+
+
+	/**
+	move window to second display
+	*/
+ 	public void moveTransitionToSecondDisplay(){
+		if(!isShowDualScreen()){
+			mSecondTaskIds.clear();
+		}else{
+            if (mSecondDisplayTaskId != -1) {
+			    return;
+            }
+		}
+		Settings.System.putInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_ICON_USED, 0);
+		List<Integer> allTaskIds = null;
+		try{
+			allTaskIds = mActivityManager.getAllTaskIds();
+		}catch (Exception e){
+			if(DEBUG) Log.i(TAG_DUALSCREEN, "WindowManagerService->getAllTaskIds->e:" + e);
+		}
+		
+		if(allTaskIds == null || allTaskIds.size() < 2)
+			return;
+		
+		long origId = Binder.clearCallingIdentity();
+		int curMoveTaskId = -1;
+		synchronized(mWindowMap){
+			if(mDisplayContents == null || mDisplayContents.size() <= 1){
+				return;
+			}
+			final int displayCount = mDisplayContents.size();
+			DisplayContent defaultContent = getDefaultDisplayContentLocked();
+			int displayId = 0;
+			DisplayContent secondDisplayContent = null;
+			for(int i = 0; i < displayCount;i++){
+				final DisplayContent content = mDisplayContents.valueAt(i);
+				if(content != defaultContent){
+					secondDisplayContent = content;
+					displayId = secondDisplayContent.getDisplayId();
+					if(DEBUG) Log.d(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->secondDisplayId:" + displayId);
+					break;
+				}
+			}
+
+			if(secondDisplayContent == null){
+				return;
+			}
+			if(!okToDisplay()){
+				return;
+			}
+			SurfaceControl.openTransaction();
+			WindowState win = null;
+			WindowList defaultWindows = defaultContent.getWindowList();
+			if(DEBUG) Log.i(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->defaultWindows:" + defaultWindows);
+			try{
+				WindowList secondDisplayAddList = new WindowList();
+				WindowList secondDisplayWindows = secondDisplayContent.getWindowList();
+				if(DEBUG) Log.i(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->secondDisplayWindows0:" + secondDisplayWindows);
+				if(DEBUG) Log.i(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->allTaskIds = " + allTaskIds);
+				int topTaskId = -1;
+				if(allTaskIds != null && allTaskIds.size() > 0){
+					topTaskId = allTaskIds.get(0);
+					mSecondTaskIds.add(topTaskId);
+				}
+			
+				
+				for(int i= defaultWindows.size()-1;i>=0;i--){
+					win = defaultWindows.get(i);
+					
+					if(win == null){
+						continue;
+					}
+					if (win.mAppToken == null){
+						continue;
+					}
+					boolean isSurface=false;
+					int windowTaskId=-1;
+					if(win.taskId==-1&&win.mAttachedWindow!=null&&win.mAttachedWindow.mAppToken.mTask.mTaskId==topTaskId){
+						isSurface=true;
+                        Log.i("DualScreenIs","isSurface = "+isSurface);
+					}else if(win.mAppToken.mTask == null){
+						continue;
+					}else{
+						windowTaskId = win.mAppToken.mTask.mTaskId;
+					}
+					if(windowTaskId == topTaskId||isSurface){
+						if(DEBUG) Log.i(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->add win:" + win);
+						defaultWindows.remove(win);
+						mTempWindowList.add(win);
+						win.mDisplayContent = secondDisplayContent;
+					    if(DEBUG) Log.i(TAG_DUALSCREEN,"win.mDisplayContent = "+win.mDisplayContent+ "   secondDisplayContent = "+secondDisplayContent);
+						if(win.mWinAnimator != null){
+							int layerStack = secondDisplayContent.getDisplay().getLayerStack();
+							if(win.mWinAnimator.mSurfaceController!= null){
+								win.mWinAnimator.mSurfaceController.mSurfaceControl.setLayerStack(layerStack);
+							}
+
+						}
+						secondDisplayAddList.add(0,win);
+                        mSecondTopPackageName = win.getOwningPackage();
+					}
+				}
+			    //if(SystemProperties.getBoolean("ro.orientation.vhshow",false)){
+                    DisplayContent displayContent = getDefaultDisplayContentLocked();   
+                    if (displayContent != null) {
+                        final DisplayInfo displayInfo = displayContent.getDisplayInfo();
+                        int rotation = 0;
+                        if(displayInfo.logicalWidth > displayInfo.logicalHeight) {
+                            rotation = Surface.ROTATION_90;
+                        } else {
+                            rotation = Surface.ROTATION_0;
+                        }
+                        Settings.System.putInt(mContext.getContentResolver(), Settings.System.USER_ROTATION, rotation);
+                    }
+                //}
+				secondDisplayWindows.clear();
+				secondDisplayWindows.addAll(secondDisplayAddList);			
+				if(DEBUG) Log.i(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->secondDisplayWindows1:" + secondDisplayWindows);
+		    	if(DEBUG) Log.i(TAG_DUALSCREEN, "moveTransitionToSecondDisplay->defaultWindows:" + defaultContent.getWindowList());
+				for (int i = 0; i < displayCount; i++) {
+					final DisplayContent content = mDisplayContents.valueAt(i);
+					mLayersController.assignLayersLocked(content.getWindowList());
+					content.layoutNeeded = true;
+				}
+				mSecondDisplayTaskId = topTaskId;
+				misMovingToSecond = true;
+				Settings.System.putInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_ICON_USED, 1);
+                curMoveTaskId = getLaunchTaskId();
+                if (curMoveTaskId == -1) {
+                    curMoveTaskId = allTaskIds.get(1); 
+                }
+				if(DEBUG) Log.i(TAG_DUALSCREEN, "WindowManagerService->curMoveTaskId:" + curMoveTaskId );
+				switchFocusWindow(curMoveTaskId);
+                updateFocusedWindowLocked(UPDATE_FOCUS_WILL_PLACE_SURFACES, false);
+				mAppTransition.setReady();
+                mWindowPlacerLocked.performSurfacePlacement();
+            }finally{
+				SurfaceControl.closeTransaction();
+			}
+		}
+        currentTimeout = Settings.System.getLong(mContext.getContentResolver(),Settings.System.SCREEN_OFF_TIMEOUT,3000);
+        Settings.System.putInt(mContext.getContentResolver(), Settings.System.SCREEN_OFF_TIMEOUT,2147483647);
+		Binder.restoreCallingIdentity(origId);
+	}
+
+	public void setIsRemoveSecondTask(boolean isRemove){
+		isRemoveSecondTask = isRemove;
+	}
+
+    public String getSecondPackageName() {
+        return mSecondTopPackageName;
+    }
+	
+	public boolean isRemoveSecondTask(){
+		return isRemoveSecondTask;
+	}
+	public ArrayList<WindowState> getAllWindowListInDefaultDisplay(){
+		WindowList windows = getDefaultDisplayContentLocked().getWindowList();
+		return windows;
+    }
+	
+	public void switchFocusWindow(int taskId){
+		if (taskId == -1){
+			return;
+		}
+		try {
+			mActivityManager.moveTaskToFront(taskId,ActivityManager.MOVE_TASK_NO_ANIMATION,null);
+		} catch (RemoteException e){}
+    }
+
+	 public boolean isHomeWindow(WindowState win){
+		return isHomeWindow(win, false);
+	 }
+
+     public boolean isHomeWindow(WindowState win,boolean force){
+		boolean isHome = false;
+		if(win!=null && win.mAppToken != null){
+			if(mHomeApp == null || force){
+				try{
+				if(win.mAppToken.appToken!=null &&
+					win.mAppToken.appToken.isHomeActivity()){
+					isHome = true;
+					if(win.mAppToken.hidden ==  false){
+						mHomeApp = win.mAppToken;
+					} 
+				}
+					}catch(RemoteException e){}
+			}else{
+				if(mHomeApp == win.mAppToken){
+					isHome = true;
+				}
+			}
+		}
+
+		return isHome;
+	}
+
+   public void moveAppToBack(int taskId){
+       if(DEBUG) Log.i(TAG_DUALSCREEN, "moveAppToBack->taskId:" + taskId);
+       ArrayList<ActivityStack> allStacks = getAllStacks();
+       if(DEBUG) Log.i(TAG_DUALSCREEN, "moveAppToBack->allStacks:" + allStacks);
+       for(int i = allStacks.size() - 1; i >= 0; --i){
+           ActivityStack itemStack = allStacks.get(i);
+           //ArrayList<TaskRecord> getAllTasks()
+           List<TaskRecord> itemTasks = itemStack.getAllTasks();
+           if(itemTasks != null && itemTasks.size() > 0){
+               for(int k = itemTasks.size() - 1; k >= 0; --k){
+                   TaskRecord itemTask = itemTasks.get(k);
+                   List<ActivityRecord> itemActivities = itemTask.mActivities;
+                   if(itemTask.taskId == taskId && itemActivities != null && itemActivities.size() > 0){
+                       for(int j = itemActivities.size() - 1; j >= 0; --j){
+                           ActivityRecord itemActivity = itemActivities.get(j);
+                           try{
+                               if(DEBUG) Log.i(TAG_DUALSCREEN, "moveActivityTaskToBack->taskId:" + itemActivity.appToken);
+                               ActivityManagerNative.getDefault().moveActivityTaskToBack(itemActivity.appToken,true);
+                           }catch(Exception e){
+                               if(DEBUG) Log.i(TAG_DUALSCREEN, "moveAppToBack->exception:" + e);
+                           }
+                           
+                       }
+                   }
+               
+               }
+           }
+
+       }
+    }
+	public int getLaunchTaskId(){
+		ArrayList<ActivityStack> allStacks = getAllStacks();
+		for(int i = allStacks.size() - 1; i >= 0; --i){
+			ActivityStack itemStack = allStacks.get(i);
+			List<TaskRecord> itemTasks = itemStack.getAllTasks();
+			if(itemTasks != null && itemTasks.size() > 0){
+				for(int k = itemTasks.size() - 1; k >= 0; --k){
+					TaskRecord itemTask = itemTasks.get(k);
+					List<ActivityRecord> itemActivities = itemTask.mActivities;
+					for(int j = itemActivities.size() - 1; j >= 0; --j){
+						if (itemActivities.get(j).isHomeActivity) {
+					        return itemTask.taskId;
+                        }	
+					}
+				
+				}
+			}
+
+		}
+        return -1;
+    }
+
+	public boolean isShowDualScreen(){
+		boolean isShowDualScreen = false;
+		try{
+			isShowDualScreen = Settings.System.getInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_ICON_USED,0) == 1;
+		}catch (Exception e){
+			if(DEBUG) Log.i(TAG_DUALSCREEN, "WindowManagerService->isShowDualScreen->exception:" + e);
+			isShowDualScreen = false;
+		}
+		return isShowDualScreen;
+	}
+	
+	public boolean isDualConfig(){
+		boolean isDualConfig = true;
+		try{
+			isDualConfig = Settings.System.getInt(mContext.getContentResolver(), Settings.DUAL_SCREEN_MODE,0) == 1;
+		}catch (Exception e){
+			isDualConfig = false;
+		}
+		return isDualConfig;
+	}
+	public int getSecondDisplayTaskId(){
+		return mSecondDisplayTaskId;
+	}
+	
+	
+    @Override
+    public boolean getDualScreenFlag(){
+        return mCurConfiguration.enableDualScreen();
+    }
+	public List<Integer> getSecondTaskIds(){
+		return mSecondTaskIds;
+	}
+	
+	
+	//get All stacks
+	public ArrayList<ActivityStack> getAllStacks(){
+		if(mStackSupervisor != null)
+			return mStackSupervisor.getStacks();
+		return null;
+		//mAllStacks;
+	}
+	
+	public WindowList getSecondWindowState() {
+		final int displayCount = mDisplayContents.size();
+		DisplayContent defaultContent = getDefaultDisplayContentLocked();
+		DisplayContent secondDisplayContent = null;
+		for(int i = 0; i != displayCount; ++i){
+			DisplayContent content = mDisplayContents.valueAt(i);
+			if(content != defaultContent) {
+				secondDisplayContent = content;
+                	}
+		}
+		if(secondDisplayContent == null) {
+			return null;
+            	}
+		return  secondDisplayContent.getWindowList();
+	}
+	
+	public void setStackSupervisor(ActivityStackSupervisor supervisor){
+		mStackSupervisor = supervisor;
+    }
+
 
     public InputMonitor getInputMonitor() {
         return mInputMonitor;
@@ -2952,7 +3430,6 @@ public class WindowManagerService extends IWindowManager.Stub
 
             win.mRelayoutCalled = true;
             win.mInRelayout = true;
-
             final int oldVisibility = win.mViewVisibility;
             win.mViewVisibility = viewVisibility;
             if (DEBUG_SCREEN_ON) {
@@ -3721,6 +4198,12 @@ public class WindowManagerService extends IWindowManager.Stub
                 getDefaultDisplayContentLocked().mDividerControllerLocked.isMinimizedDock();
         for (int taskNdx = tasks.size() - 1; taskNdx >= 0; --taskNdx) {
             AppTokenList tokens = tasks.get(taskNdx).mAppTokens;
+            if(mSecondDisplayTaskId != -1) { //dual screen
+                if(DEBUG) Log.i(TAG_DUALSCREEN,"getAppSpecifiedOrientation  taskId = "+tasks.get(taskNdx).mTaskId +" mSecondDisplayTaskId = "+mSecondDisplayTaskId);
+                if(tasks.get(taskNdx).mTaskId  == mSecondDisplayTaskId){ //Secondary screen application forced rotation
+                    return mLastOrientation;//keep the current orientation
+                }
+            }
             final int firstToken = tokens.size() - 1;
             for (int tokenNdx = firstToken; tokenNdx >= 0; --tokenNdx) {
                 final AppWindowToken atoken = tokens.get(tokenNdx);
@@ -3840,6 +4323,7 @@ public class WindowManagerService extends IWindowManager.Stub
             // the value of the previous configuration.
             mTempConfiguration.setToDefaults();
             mTempConfiguration.updateFrom(currentConfig);
+            mTempConfiguration.dualscreenflag= mCurConfiguration.dualscreenflag;
             computeScreenConfigurationLocked(mTempConfiguration);
             if (currentConfig.diff(mTempConfiguration) != 0) {
                 mWaitingForConfig = true;
@@ -7823,7 +8307,8 @@ public class WindowManagerService extends IWindowManager.Stub
             mH.removeMessages(H.REPORT_HARD_KEYBOARD_STATUS_CHANGE);
             mH.sendEmptyMessage(H.REPORT_HARD_KEYBOARD_STATUS_CHANGE);
         }
-
+        boolean dualscreenconfig = Settings.System.getInt(mContext.getContentResolver(),Settings.DUAL_SCREEN_MODE,0) != 0;
+        config.dualscreenflag= dualscreenconfig ? Configuration.ENABLE_DUAL_SCREEN:Configuration.DISABLE_DUAL_SCREEN;
         // Let the policy update hidden states.
         config.keyboardHidden = Configuration.KEYBOARDHIDDEN_NO;
         config.hardKeyboardHidden = Configuration.HARDKEYBOARDHIDDEN_YES;
@@ -8395,6 +8880,9 @@ public class WindowManagerService extends IWindowManager.Stub
         public static final int NOTIFY_DOCKED_STACK_MINIMIZED_CHANGED = 53;
         public static final int SEAMLESS_ROTATION_TIMEOUT = 54;
 
+
+        public static final int DO_TASK_DISPLAY_CHANGED = 55;
+       
         /**
          * Used to denote that an integer field in a message will not be used.
          */
@@ -8406,6 +8894,12 @@ public class WindowManagerService extends IWindowManager.Stub
                 Slog.v(TAG_WM, "handleMessage: entry what=" + msg.what);
             }
             switch (msg.what) {
+                case DO_TASK_DISPLAY_CHANGED: {
+					synchronized (mWindowMap) {
+                        moveTransitionToSecondDisplay();
+					}
+                    break;
+                }
                 case REPORT_FOCUS_CHANGE: {
                     WindowState lastFocus;
                     WindowState newFocus;
@@ -10110,7 +10604,10 @@ public class WindowManagerService extends IWindowManager.Stub
             }
 
             AppWindowToken wtoken = win.mAppToken;
-
+            if(getDualScreenFlag()) {
+                if(isDualConfig() && isShowDualScreen() && wtoken != null && wtoken.mTask != null && wtoken.mTask.mTaskId == getSecondDisplayTaskId())
+                    continue;
+            }
             // If this window's application has been removed, just skip it.
             if (wtoken != null && (wtoken.removed || wtoken.sendingToBottom)) {
                 if (DEBUG_FOCUS) Slog.v(TAG_WM, "Skipping " + wtoken + " because "
@@ -11267,6 +11764,9 @@ public class WindowManagerService extends IWindowManager.Stub
     }
 
     public void onDisplayRemoved(int displayId) {
+        if(getDualScreenFlag()) {
+            updateDisplayShowSynchronization();
+        }
         mH.sendMessage(mH.obtainMessage(H.DO_DISPLAY_REMOVED, displayId, 0));
     }
 

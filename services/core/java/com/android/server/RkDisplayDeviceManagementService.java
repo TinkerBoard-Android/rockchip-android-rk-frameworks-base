@@ -108,6 +108,7 @@ class RkDisplayDeviceManagementService extends IRkDisplayDeviceManagementService
 
     public String getMode(int display, String iface){
         String mode = mdrmModes.getCurMode(display, iface);
+        Log.d(TAG, "getMode: " + mode + " display " +display);
         return mode;
     }
 
@@ -121,28 +122,39 @@ class RkDisplayDeviceManagementService extends IRkDisplayDeviceManagementService
 
         lastMode = mdrmModes.getCurMode(display, iface);
         mdrmModes.setMode(display, iface, mode);
-        isSameProperty = lastMode.equals(mdrmModes.getCurMode(display, iface));
-        Log.v(TAG, "setMode ---- getCurMode "+mdrmModes.getCurMode(display, iface) + "  isSameProperty  "+ isSameProperty);
-        Log.v(TAG, "lastMode " + lastMode + "display " +display);
-        if (!isSameProperty) {
+        isSameProperty = lastMode.equals(mode);
+        Log.d(TAG, "setMode ---- lastMode: "+lastMode + "  mode:"+ mode +"  isSameProperty  "+ isSameProperty);
+        Log.v(TAG, "lastMode " + lastMode + " display " +display);
+        if (!isSameProperty || mode.equals("Auto")) {
             timeline++;
             SystemProperties.set("sys.display.timeline", Integer.toString(timeline));
         }
     }
 
-    public void setColorMode(int display, String iface, String format, int depth){
-        StringBuilder builder = new StringBuilder();
+    public String[] getSupportCorlorList(int display, String iface){
+        List<String> corlorList = mdrmModes.getSupportCorlorList(display);
+        if (corlorList != null)
+            return corlorList.toArray(new String[corlorList.size()]);
+        else
+            return null;
+    }
+
+    public String getCurColorMode(int display, String iface){
+        String colorMode = mdrmModes.getCurColorMode(display);
+        return colorMode;
+    }
+
+    public void setColorMode(int display, String iface, String format){
         boolean isSameProperty = false;
 
-        builder.append(format).append("-").append(depth).append("bit");
         if (display == MAIN_DISPLAY) {
             String lastColor = SystemProperties.get("persist.sys.color.main");
-            isSameProperty = lastColor.equals(builder.toString());
-            SystemProperties.set("persist.sys.color.main", builder.toString());
+            isSameProperty = lastColor.equals(format);
+            SystemProperties.set("persist.sys.color.main", format);
         } else {
             String lastColor = SystemProperties.get("persist.sys.color.aux");
-            isSameProperty = lastColor.equals(builder.toString());
-            SystemProperties.set("persist.sys.color.aux", builder.toString());
+            isSameProperty = lastColor.equals(format);
+            SystemProperties.set("persist.sys.color.aux", format);
         }
 
         if (!isSameProperty) {
@@ -191,7 +203,10 @@ class RkDisplayDeviceManagementService extends IRkDisplayDeviceManagementService
             rect.right = Integer.parseInt(tmpValue[2]);
             rect.bottom = Integer.parseInt(tmpValue[3]);
         }
-
+        if (value > 100)
+            value = 100;
+        else if (value < 50)
+            value = 50;
         if(direction == DISPLAY_OVERSCAN_X) {
             rect.left = value;
             rect.right = value;
@@ -333,6 +348,23 @@ class RkDisplayDeviceManagementService extends IRkDisplayDeviceManagementService
         }
     }
 
+    public int[] getBcsh(int display) {
+        int[] bcsh = new int[4];
+        bcsh = mdrmModes.getBcsh(display);
+        Log.d(TAG, "getBcsh: " +  bcsh[0] + " " + bcsh[1] + " " +  bcsh[2] + " " + bcsh[3]);
+        return bcsh;
+    }
+
+    public int[] getOverscan(int display) {
+        int[] mOverscan = new int[4];
+        mOverscan = mdrmModes.getOverscan(display);
+        Log.d(TAG, "getOverscan: " +  mOverscan[0] + " " + mOverscan[1] + " " +  mOverscan[2] + " " + mOverscan[3]);
+        return mOverscan;
+    }
+
+    public int setGamma(int dpy,int size,int[] red, int[] green, int[] blue){
+        return mdrmModes.setGamma(dpy, size, red, green, blue);
+    }
     public void updateDisplayInfos(){
         mdrmModes.updateDisplayInfos();
     }

@@ -24,8 +24,14 @@ import android.view.Surface;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.List;
+import android.util.Slog;
 
+import android.view.IWindowManager;
+import android.os.ServiceManager;
+import android.content.Context;
 import libcore.util.Objects;
+ 
+import android.os.SystemProperties;
 
 /**
  * Describes how a logical display is configured.
@@ -60,11 +66,16 @@ final class LogicalDisplay {
     // of its content from appearing.
     private static final int BLANK_LAYER_STACK = -1;
 
+    private static final String TAG_DUALSCREEN = "DualScreen";
+    private final boolean DEBUG_DUALSCREEN = false;
     private final int mDisplayId;
     private final int mLayerStack;
     private DisplayInfo mOverrideDisplayInfo; // set by the window manager
-    private DisplayInfo mInfo;
-
+    public DisplayInfo mInfo;
+    public boolean  isDefaultDisplay = false;
+    private static Rect diffStackRect = null;
+    private static Rect diffDisplayRect = null;
+    private static boolean displayVhShow = false;  
     // The display device that this logical display is based on and which
     // determines the base metrics that it uses.
     private DisplayDevice mPrimaryDisplayDevice;
@@ -277,7 +288,8 @@ final class LogicalDisplay {
      * @param isBlanked True if the device is being blanked.
      */
     public void configureDisplayInTransactionLocked(DisplayDevice device,
-            boolean isBlanked) {
+            boolean isBlanked, DisplayInfo info) {
+        boolean isDualScreen = false;
         // Set the layer stack.
         device.setLayerStackInTransactionLocked(isBlanked ? BLANK_LAYER_STACK : mLayerStack);
 
@@ -290,9 +302,20 @@ final class LogicalDisplay {
         }
 
         // Only grab the display info now as it may have been changed based on the requests above.
-        final DisplayInfo displayInfo = getDisplayInfoLocked();
+        DisplayInfo displayInfo = getDisplayInfoLocked();
         final DisplayDeviceInfo displayDeviceInfo = device.getDisplayDeviceInfoLocked();
-
+        IWindowManager wm = IWindowManager.Stub.asInterface(ServiceManager.getService(Context.WINDOW_SERVICE));
+        try{
+            if(wm.getDualScreenFlag()) {
+                isDualScreen = wm.getSecondDisplayTaskId() != -1;
+                if(wm.isDualConfig()){
+                    displayInfo = info != null?info:getDisplayInfoLocked();
+                    if(DEBUG_DUALSCREEN) Slog.v(TAG_DUALSCREEN,"LogicalDisplay configurDisplay  displayInfo = "+displayInfo);
+                }
+            }
+        }catch(Exception e){
+           //no handle
+        }
         // Set the viewport.
         // This is the area of the logical display that we intend to show on the
         // display device.  For now, it is always the full size of the logical display.
@@ -345,13 +368,63 @@ final class LogicalDisplay {
         mTempDisplayRect.set(displayRectLeft, displayRectTop,
                 displayRectLeft + displayRectWidth, displayRectTop + displayRectHeight);
 
+
         mTempDisplayRect.left += mDisplayOffsetX;
         mTempDisplayRect.right += mDisplayOffsetX;
         mTempDisplayRect.top += mDisplayOffsetY;
         mTempDisplayRect.bottom += mDisplayOffsetY;
+        
+        if(SystemProperties.getBoolean("persist.orientation.vhshow",false)) {
+            Rect displayRect = new Rect(mTempLayerStackRect);
+            if (isDefaultDisplay == false) {
+                if (isDualScreen == true) {
+                    displayVhShow = true;
+                    if(diffStackRect != null) {
+                        displayRect = new Rect(diffStackRect);
+                    }
+                }
+                diffStackRect = new Rect(displayRect);     
+                int width=displayDeviceInfo.width;
+                int height=displayDeviceInfo.height;
+                device.setProjectionInTransactionLocked(orientation, displayRect, new Rect(0,0,width,height));
+                return ;
+                //Keep mTempLayerStackRect、mTempDisplayRect、crop unchanged, will not stretch after rotation
+            }
+        } else {
+            try{
+                if(wm.getDualScreenFlag()) {
+                    Rect stackRect = new Rect(mTempLayerStackRect);
+                    Rect displayRect = new Rect(mTempDisplayRect);
+                    if(DEBUG_DUALSCREEN) Slog.v(TAG_DUALSCREEN,"mTempDisplayRect ="+mTempDisplayRect);
+                    if(displayVhShow == true) {
+                        displayVhShow = false;
+                      //  displayRect = new Rect(diffDisplayRect);                    
+                        if(DEBUG_DUALSCREEN) Slog.v(TAG_DUALSCREEN,"diffDisplayRect  ------------------ ="+diffDisplayRect);
+                        diffStackRect = null;
+                        diffDisplayRect = null;
+                    }
+                    if (isDefaultDisplay == false) {
+                        if (isDualScreen == true) {
+                            if(diffDisplayRect != null) {
+                                 displayRect = new Rect(diffDisplayRect);
+                            }
+                            if(diffStackRect != null) {
+                                stackRect = new Rect(diffStackRect);
+                            }
+                        }
+                        diffStackRect = new Rect(stackRect);
+                        diffDisplayRect = new Rect(displayRect);
+                        if(DEBUG_DUALSCREEN) Slog.v(TAG_DUALSCREEN,"diffDisplayRect ="+diffDisplayRect);
+                        device.setProjectionInTransactionLocked(orientation, stackRect, displayRect);
+                        return ;
+                    } 
+                }
+            }catch(Exception e){
+            //no handle
+            }
+        }
         device.setProjectionInTransactionLocked(orientation, mTempLayerStackRect, mTempDisplayRect);
     }
-
     /**
      * Returns true if the logical display has unique content.
      * <p>
