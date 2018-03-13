@@ -385,6 +385,7 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
         intentFilter.addAction(Intent.ACTION_USER_REMOVED);
         intentFilter.addAction(Intent.ACTION_USER_PRESENT);
         intentFilter.addAction(Intent.ACTION_SETTING_RESTORED);
+        intentFilter.addAction("com.asus.powermenu.Intent");
 
         mContext.registerReceiverAsUser(new BroadcastReceiver() {
             @Override
@@ -413,6 +414,9 @@ public class AccessibilityManagerService extends IAccessibilityManager.Stub {
                                     intent.getStringExtra(Intent.EXTRA_SETTING_NEW_VALUE));
                         }
                     }
+                } else if (action.equals("com.asus.powermenu.Intent")) {
+                    Slog.i(LOG_TAG, "Power app broadcast intent to enable power menu");
+                    mWindowManagerService.showGlobalActions();
                 }
             }
         }, UserHandle.ALL, intentFilter, null, null);
