@@ -223,12 +223,12 @@ public abstract class PanelView extends FrameLayout {
         }
 
         // On expanding, single mouse click expands the panel instead of dragging.
-        if (isFullyCollapsed() && event.isFromSource(InputDevice.SOURCE_MOUSE)) {
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                expand(true);
-            }
-            return true;
-        }
+        // if (isFullyCollapsed() && event.isFromSource(InputDevice.SOURCE_MOUSE)) {
+        //     if (event.getAction() == MotionEvent.ACTION_UP) {
+        //         expand(true);
+        //     }
+        //     return true;
+        // }
 
         /*
          * We capture touch events here and update the expand height here in case according to
