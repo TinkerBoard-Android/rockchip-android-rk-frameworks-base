@@ -393,12 +393,12 @@ final class WiredAccessoryManager implements WiredAccessoryCallbacks {
             }
 
             // Monitor USB
-            /*uei = new UEventInfo(NAME_USB_AUDIO, BIT_USB_HEADSET_ANLG, BIT_USB_HEADSET_DGTL, 0);
+            uei = new UEventInfo(NAME_USB_AUDIO, BIT_USB_HEADSET_ANLG, BIT_USB_HEADSET_DGTL, 0);
             if (uei.checkSwitchExists()) {
                 retVal.add(uei);
             } else {
                 Slog.w(TAG, "This kernel does not have usb audio support");
-            }*/
+            }
 
             // Monitor HDMI
             //
