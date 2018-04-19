@@ -165,6 +165,9 @@
     <!-- shortcut manager -->
     <uses-permission android:name="android.permission.RESET_SHORTCUT_MANAGER_THROTTLING" />
 
+    <!-- usb access -->
+    <uses-permission android:name="android.permission.USB" />
+
     <application
         android:name=".SystemUIApplication"
         android:persistent="true"
