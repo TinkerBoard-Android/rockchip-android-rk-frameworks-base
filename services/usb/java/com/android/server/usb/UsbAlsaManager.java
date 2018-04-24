@@ -381,6 +381,15 @@ public final class UsbAlsaManager {
             Slog.d(TAG, "  mCardsParser.isCardUsb(" + addedCard + ") = "
                         + mCardsParser.isCardUsb(addedCard));
         }
+
+        // Bypass onboard usb audio for ASUS TinkerBoard
+        String usbProductId = "0x" + Integer.toHexString(usbDevice.getProductId());
+
+        if (usbProductId.equals("0x481a")) {
+            Slog.d(TAG, "bypass onboard usb audio");
+            return;
+        }
+
         if (mCardsParser.isCardUsb(addedCard)) {
             UsbAudioDevice audioDevice = selectAudioCard(addedCard);
             if (audioDevice != null) {
