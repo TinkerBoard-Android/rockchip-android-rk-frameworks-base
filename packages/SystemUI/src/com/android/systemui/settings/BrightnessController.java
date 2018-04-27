@@ -72,6 +72,7 @@ public class BrightnessController implements ToggleSlider.Listener {
 
     private Handler mBackgroundHandler;
     private final BrightnessObserver mBrightnessObserver;
+    private final UsbPanelBrightnessController mUsbPanelBrightnessController;
 
     private ArrayList<BrightnessStateChangeCallback> mChangeCallbacks =
             new ArrayList<BrightnessStateChangeCallback>();
@@ -285,6 +286,7 @@ public class BrightnessController implements ToggleSlider.Listener {
             }
         };
         mBrightnessObserver = new BrightnessObserver(mHandler);
+        mUsbPanelBrightnessController = new UsbPanelBrightnessController();
 
         PowerManager pm = (PowerManager)context.getSystemService(Context.POWER_SERVICE);
         mMinimumBacklight = pm.getMinimumScreenBrightnessSetting();
@@ -356,6 +358,8 @@ public class BrightnessController implements ToggleSlider.Listener {
             boolean stopTracking) {
         updateIcon(mAutomatic);
         if (mExternalChange) return;
+        
+        mUsbPanelBrightnessController.setBacklightValue( Math.round((float)value * 10/256) );
 
         if (mIsVrModeEnabled) {
             final int val = value + mMinimumBacklightForVr;

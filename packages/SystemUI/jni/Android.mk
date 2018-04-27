@@ -35,3 +35,5 @@ LOCAL_C_INCLUDES += \
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
+
+include $(LOCAL_PATH)/usbpanel.mk

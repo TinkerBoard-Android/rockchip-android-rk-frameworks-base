@@ -31,7 +31,9 @@ LOCAL_STATIC_JAVA_LIBRARIES := \
     SystemUI-proto-tags
 
 LOCAL_JAVA_LIBRARIES := telephony-common
-LOCAL_JNI_SHARED_LIBRARIES := librockchip_pip_jni
+LOCAL_JNI_SHARED_LIBRARIES := \
+    librockchip_pip_jni \
+    libsetbacklight_jni
 
 LOCAL_PACKAGE_NAME := SystemUI
 LOCAL_CERTIFICATE := platform
@@ -60,6 +62,8 @@ endif
 include frameworks/base/packages/SettingsLib/common.mk
 
 include $(BUILD_PACKAGE)
+
+#include $(LOCAL_PATH)/jni/Android.mk
 
 ifeq ($(EXCLUDE_SYSTEMUI_TESTS),)
     include $(call all-makefiles-under,$(LOCAL_PATH))
