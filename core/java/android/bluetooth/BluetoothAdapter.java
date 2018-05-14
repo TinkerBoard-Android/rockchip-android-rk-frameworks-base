@@ -1304,7 +1304,14 @@ public final class BluetoothAdapter {
         if (getState() != STATE_ON) return false;
         try {
             mServiceLock.readLock().lock();
-            if (mService != null) return mService.isMultiAdvertisementSupported();
+            if (mService != null) {
+                // Due to Realtek chip not support multiple advertising function , so do hard code.
+                // For some application such as Beacon Simulator.
+                boolean temp = mService.isMultiAdvertisementSupported();
+                temp = true;
+                Log.e(TAG, "Force isMultipleAdvertisementSupported return " + temp);
+                return temp;
+            }
         } catch (RemoteException e) {
             Log.e(TAG, "failed to get isMultipleAdvertisementSupported, error: ", e);
         } finally {
