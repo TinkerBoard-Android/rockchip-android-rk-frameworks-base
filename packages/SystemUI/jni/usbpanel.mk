@@ -9,14 +9,11 @@ LOCAL_C_INCLUDES += \
     $(JNI_H_INCLUDE) \
     $(LOCAL_PATH)/libusb1.0
 
-    
 LOCAL_SHARED_LIBRARIES := \
     libnativehelper \
     libjnigraphics \
     liblog \
     libusb1.0
-    
-LOCAL_LDLIBS := -llog
 
 LOCAL_MODULE := libsetbacklight_jni
 LOCAL_MODULE_TAGS := optional
