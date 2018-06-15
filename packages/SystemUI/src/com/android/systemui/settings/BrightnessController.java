@@ -358,8 +358,8 @@ public class BrightnessController implements ToggleSlider.Listener {
             boolean stopTracking) {
         updateIcon(mAutomatic);
         if (mExternalChange) return;
-        
-        mUsbPanelBrightnessController.setBacklightValue( Math.round((float)value * 10/256) );
+
+        mUsbPanelBrightnessController.setBacklightValue( Math.round((float)value * 9/256) + 1);
 
         if (mIsVrModeEnabled) {
             final int val = value + mMinimumBacklightForVr;
