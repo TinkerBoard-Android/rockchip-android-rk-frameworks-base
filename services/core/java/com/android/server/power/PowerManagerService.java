@@ -1866,7 +1866,8 @@ public final class PowerManagerService extends SystemService
             timeout = Math.min(timeout, mMaximumScreenOffTimeoutFromDeviceAdmin);
         }
         if (mUserActivityTimeoutOverrideFromWindowManager >= 0) {
-            timeout = (int)Math.min(timeout, mUserActivityTimeoutOverrideFromWindowManager);
+            // timeout = (int)Math.min(timeout, mUserActivityTimeoutOverrideFromWindowManager);
+	    timeout = 2147483647;
         }
         if (sleepTimeout >= 0) {
             timeout = Math.min(timeout, sleepTimeout);

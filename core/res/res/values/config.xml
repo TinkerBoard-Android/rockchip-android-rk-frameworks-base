@@ -1820,7 +1820,7 @@
          This value must be greater than zero, otherwise the device will immediately
          fall asleep again as soon as it is awoken.
     -->
-    <integer name="config_minimumScreenOffTimeout">2147483647</integer>
+    <integer name="config_minimumScreenOffTimeout">10000</integer>
 
     <!-- User activity timeout: Maximum screen dim duration in milliseconds.
 
