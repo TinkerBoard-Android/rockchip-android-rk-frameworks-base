@@ -4362,6 +4362,10 @@ public class WindowManagerService extends IWindowManager.Stub
         try {
             int req = getOrientationLocked();
             if (req != mLastOrientation) {
+                // Set req = mLastOrientation , forcing App on portrait mode, do not rotate
+                Slog.w(TAG_WM, "Forcing App on portrait mode, do not rotate");
+                req = mLastOrientation;
+                /*
                 mLastOrientation = req;
                 //send a message to Policy indicating orientation change to take
                 //action like disabling/enabling sensors etc.,
@@ -4370,6 +4374,7 @@ public class WindowManagerService extends IWindowManager.Stub
                     // changed
                     return true;
                 }
+                 */
             }
 
             return false;
