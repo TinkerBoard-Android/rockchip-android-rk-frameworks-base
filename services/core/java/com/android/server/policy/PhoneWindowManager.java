@@ -7054,10 +7054,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             } else if (orientation == ActivityInfo.SCREEN_ORIENTATION_LOCKED) {
                 // Application just wants to remain locked in the last rotation.
                 preferredRotation = lastRotation;
+            /*
+             * Skip the AutoRotation check
             } else if (!mSupportAutoRotation) {
                 // If we don't support auto-rotation then bail out here and ignore
                 // the sensor and any rotation lock settings.
                 preferredRotation = -1;
+             */
             } else if ((mUserRotationMode == WindowManagerPolicy.USER_ROTATION_FREE
                             && (orientation == ActivityInfo.SCREEN_ORIENTATION_USER
                                     || orientation == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
