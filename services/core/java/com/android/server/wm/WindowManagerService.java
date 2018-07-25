@@ -4361,8 +4361,6 @@ public class WindowManagerService extends IWindowManager.Stub
         long ident = Binder.clearCallingIdentity();
         try {
             int req = getOrientationLocked();
-            Slog.w(TAG_WM, "Forcing App do not rotate, req = " + req + " , mLastOrientation = "  + mLastOrientation );
-            req = 0; // Set req = 0 , forcing App on portrait mode do not rotate
             if (req != mLastOrientation) {
                 mLastOrientation = req;
                 //send a message to Policy indicating orientation change to take
