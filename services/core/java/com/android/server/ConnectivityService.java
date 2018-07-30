@@ -766,7 +766,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mNetConfigs = new NetworkConfig[ConnectivityManager.MAX_NETWORK_TYPE+1];
 
         // TODO: What is the "correct" way to do determine if this is a wifi only device?
-        boolean wifiOnly = SystemProperties.getBoolean("ro.radio.noril", false);
+        boolean wifiOnly;
+        String ril = SystemProperties.get("persist.radio.ril","false");
+        if( ril != "false")
+                wifiOnly = false;
+        else
+                wifiOnly = true;
         log("wifiOnly=" + wifiOnly);
         String[] naStrings = context.getResources().getStringArray(
                 com.android.internal.R.array.networkAttributes);
