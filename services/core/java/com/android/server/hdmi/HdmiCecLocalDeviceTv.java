@@ -1908,7 +1908,8 @@ final class HdmiCecLocalDeviceTv extends HdmiCecLocalDevice {
         if (targetDevice == null) {
             return;
         }
-        int targetAddress = targetDevice.getLogicalAddress();
+        /* cec cts specification requires that standby message must be broadcast */
+        int targetAddress = Constants.ADDR_BROADCAST;
         mService.sendCecCommand(HdmiCecMessageBuilder.buildStandby(mAddress, targetAddress));
     }
 
