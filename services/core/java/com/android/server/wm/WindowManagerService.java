@@ -8126,7 +8126,10 @@ public class WindowManagerService extends IWindowManager.Stub
         sl = reduceConfigLayout(sl, Surface.ROTATION_90, density, unrotDh, unrotDw, uiMode);
         sl = reduceConfigLayout(sl, Surface.ROTATION_180, density, unrotDw, unrotDh, uiMode);
         sl = reduceConfigLayout(sl, Surface.ROTATION_270, density, unrotDh, unrotDw, uiMode);
-        outConfig.smallestScreenWidthDp = (int)(displayInfo.smallestNominalAppWidth / density);
+
+        /*ASUS-(Tinker Board S)-RK3288-C-Andoird&Debian
+        Defect #236318*/
+        outConfig.smallestScreenWidthDp = 600;
         outConfig.screenLayout = sl;
     }
 
