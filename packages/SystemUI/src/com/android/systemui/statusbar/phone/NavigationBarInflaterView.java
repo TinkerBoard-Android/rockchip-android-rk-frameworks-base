@@ -30,8 +30,11 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Space;
 import com.android.systemui.R;
+import com.android.systemui.classifier.Point;
 import com.android.systemui.statusbar.policy.KeyButtonView;
 import com.android.systemui.tuner.TunerService;
+import android.util.Slog;
+
 
 import java.util.Objects;
 public class NavigationBarInflaterView extends FrameLayout implements TunerService.Tunable {
@@ -87,6 +90,12 @@ public class NavigationBarInflaterView extends FrameLayout implements TunerServi
                 context.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
         Mode displayMode = display.getMode();
         isRot0Landscape = displayMode.getPhysicalWidth() < displayMode.getPhysicalHeight();
+        android.graphics.Point p=new android.graphics.Point();
+        display.getRealSize(p);
+        if(p.x>p.y){
+            mCurrentOrientation=Configuration.ORIENTATION_LANDSCAPE;
+        }
+
     }
 
     private void createInflaters() {
