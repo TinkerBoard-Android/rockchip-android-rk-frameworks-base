@@ -2061,11 +2061,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         int longSizeDp = longSize * DisplayMetrics.DENSITY_DEFAULT / density;
 
         // Allow the navigation bar to move on non-square small devices (phones).
-	 //mNavigationBarCanMove = width != height && shortSizeDp < 600;
-
-        /*ASUS-(Tinker Board S)-RK3288-C-Andoird&Debian
-        Defect #236318*/
-	mNavigationBarCanMove = false;
+        mNavigationBarCanMove = width != height && shortSizeDp < 600;
 
         mHasNavigationBar = res.getBoolean(com.android.internal.R.bool.config_showNavigationBar);
 
