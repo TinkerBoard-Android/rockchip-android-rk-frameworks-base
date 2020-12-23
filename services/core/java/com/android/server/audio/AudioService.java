@@ -5137,7 +5137,7 @@ public class AudioService extends IAudioService.Stub {
             if ((state == 0) && ((device == AudioSystem.DEVICE_OUT_WIRED_HEADSET) ||
                     (device == AudioSystem.DEVICE_OUT_WIRED_HEADPHONE) ||
                     (device == AudioSystem.DEVICE_OUT_LINE))) {
-                setBluetoothA2dpOnInt(true);
+                //setBluetoothA2dpOnInt(true);
             }
             boolean isUsb = ((device & ~AudioSystem.DEVICE_OUT_ALL_USB) == 0) ||
                             (((device & AudioSystem.DEVICE_BIT_IN) != 0) &&
