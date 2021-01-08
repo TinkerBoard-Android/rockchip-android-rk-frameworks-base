@@ -321,7 +321,7 @@ class LockSettingsStorage {
             RandomAccessFile raf = null;
             try {
                 // Write the hash to file
-                raf = new RandomAccessFile(name, "rw");
+                raf = new RandomAccessFile(name, "rws");
                 // Truncate the file if pattern is null, to clear the lock
                 if (hash == null || hash.length == 0) {
                     raf.setLength(0);
