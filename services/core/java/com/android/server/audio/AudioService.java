@@ -5039,8 +5039,7 @@ public class AudioService extends IAudioService.Stub {
                     devices |= dev;
                 }
             }
-//            if (devices == device) {
-            if (devices == device && device != AudioSystem.DEVICE_OUT_USB_DEVICE && device !=AudioSystem.DEVICE_IN_USB_DEVICE) {
+            if (devices == device) {
                 sendMsg(mAudioHandler,
                         MSG_BROADCAST_AUDIO_BECOMING_NOISY,
                         SENDMSG_REPLACE,

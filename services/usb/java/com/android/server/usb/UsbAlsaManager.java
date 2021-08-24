@@ -32,7 +32,6 @@ import android.os.ServiceManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Slog;
-import android.os.SystemProperties;
 
 import com.android.internal.alsa.AlsaCardsParser;
 import com.android.internal.alsa.AlsaDevicesParser;
@@ -399,7 +398,6 @@ public final class UsbAlsaManager {
             if (audioDevice != null) {
                 mAudioDevices.put(usbDevice, audioDevice);
                 Slog.i(TAG, "USB Audio Device Added: " + audioDevice);
-                SystemProperties.set("persist.audio.output","4");
             }
 
             // look for MIDI devices
@@ -457,7 +455,6 @@ public final class UsbAlsaManager {
 
         UsbAudioDevice audioDevice = mAudioDevices.remove(usbDevice);
         Slog.i(TAG, "USB Audio Device Removed: " + audioDevice);
-        SystemProperties.set("persist.audio.output","0");
         if (audioDevice != null) {
             if (audioDevice.mHasPlayback || audioDevice.mHasCapture) {
                 notifyDeviceState(audioDevice, false);
